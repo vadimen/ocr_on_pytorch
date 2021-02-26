@@ -1,3 +1,4 @@
-from .folder import ImageFolder
+#from .folder import ImageFolder
+from .my_dataset import MyDataset
 
-__all__ = ('ImageFolder')
+__all__ = ('MyDataset')

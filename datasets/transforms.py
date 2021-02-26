@@ -1,5 +1,5 @@
 from __future__ import division
-import caffe
+#import caffe
 import torch
 import math
 import random

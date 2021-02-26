@@ -14,17 +14,13 @@ import torch.utils.data.distributed
 # import torchvision.transforms as transforms
 # import torchvision.datasets as datasets
 import model_list
-
-# set the seed
-torch.manual_seed(1)
-torch.cuda.manual_seed(1)
-
 import sys
 import gc
 cwd = os.getcwd()
 sys.path.append(cwd+'/../')
 import datasets as datasets
-import datasets.transforms as transforms
+#import datasets.transforms as transforms
+from torchvision import transforms
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 parser.add_argument('--arch', '-a', metavar='ARCH', default='alexnet',
@@ -37,7 +33,7 @@ parser.add_argument('--epochs', default=160, type=int, metavar='N',
                     help='number of total epochs to run')
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
-parser.add_argument('-b', '--batch-size', default=256, type=int,
+parser.add_argument('-b', '--batch-size', default=128, type=int,
                     metavar='N', help='mini-batch size (default: 256)')
 parser.add_argument('--lr', '--learning-rate', default=0.01, type=float,
                     metavar='LR', help='initial learning rate')
@@ -62,6 +58,11 @@ parser.add_argument('--dist-backend', default='gloo', type=str,
 
 best_prec1 = 0
 
+torch.manual_seed(1)
+device = torch.device("cpu")
+if torch.cuda.is_available():
+    torch.cuda.manual_seed(1)
+    device = torch.device("cuda")
 
 def main():
     global args, best_prec1
@@ -73,29 +74,30 @@ def main():
         dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
                                 world_size=args.world_size)
 
+    character_set = "0123456789# "  # space is for nothing
     # create model
-    if args.arch=='alexnet':
-        model = model_list.alexnet(pretrained=args.pretrained)
-        input_size = 227
+    if args.arch == 'alexnet':
+        model = model_list.alexnet(pretrained=args.pretrained, num_classes=len(character_set))
     else:
         raise Exception('Model not supported yet')
 
     if not args.distributed:
         if args.arch.startswith('alexnet') or args.arch.startswith('vgg'):
             model.features = torch.nn.DataParallel(model.features)
-            model.cuda()
+            model.to(device)
         else:
-            model = torch.nn.DataParallel(model).cuda()
+            model = torch.nn.DataParallel(model).to(device)
     else:
-        model.cuda()
+        model.to(device)
         model = torch.nn.parallel.DistributedDataParallel(model)
 
     # define loss function (criterion) and optimizer
-    criterion = nn.CrossEntropyLoss().cuda()
+    criterion = nn.CrossEntropyLoss().to(device)
 
-    optimizer = torch.optim.SGD(model.parameters(), args.lr,
-                                momentum=args.momentum,
+    optimizer = torch.optim.Adam(model.parameters(), args.lr,
+                                #momentum=args.momentum,
                                 weight_decay=args.weight_decay)
+
 
     # optionally resume from a checkpoint
     if args.resume:
@@ -114,24 +116,28 @@ def main():
     cudnn.benchmark = True
 
     # Data loading code
-    if not os.path.exists(args.data+'/imagenet_mean.binaryproto'):
-        print("==> Data directory"+args.data+"does not exits")
-        print("==> Please specify the correct data path by")
-        print("==>     --data <DATA_PATH>")
-        return
+    # if not os.path.exists(args.data+'/imagenet_mean.binaryproto'):
+    #     print("==> Data directory"+args.data+"does not exits")
+    #     print("==> Please specify the correct data path by")
+    #     print("==>     --data <DATA_PATH>")
+    #     return
 
-    normalize = transforms.Normalize(
-            meanfile=args.data+'/imagenet_mean.binaryproto')
+    # normalize = transforms.Normalize(
+    #         meanfile=args.data+'/imagenet_mean.binaryproto')
 
-    train_dataset = datasets.ImageFolder(
-        args.data,
-        transforms.Compose([
-            transforms.RandomHorizontalFlip(),
+    train_dataset = datasets.MyDataset(
+        img_dir='/home/vadim/Downloads/reviewed_plates/train_data_lmdb/train/',
+        transform=transforms.Compose([
             transforms.ToTensor(),
-            normalize,
-            transforms.RandomSizedCrop(input_size),
-        ]),
-        Train=True)
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+        ]), character_set=character_set)
+
+    validation_dataset = datasets.MyDataset(
+        img_dir='/home/vadim/Downloads/reviewed_plates/test_data_lmdb/test/',
+        transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+        ]), character_set=character_set)
 
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
@@ -139,20 +145,15 @@ def main():
         train_sampler = None
 
     train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=args.batch_size, shuffle=False,
+        train_dataset, batch_size=args.batch_size, shuffle=True,
         num_workers=args.workers, pin_memory=True, sampler=train_sampler)
 
     val_loader = torch.utils.data.DataLoader(
-        datasets.ImageFolder(args.data, transforms.Compose([
-            transforms.ToTensor(),
-            normalize,
-            transforms.CenterCrop(input_size),
-        ]),
-        Train=False),
-        batch_size=args.batch_size, shuffle=False,
+        validation_dataset,
+        batch_size=args.batch_size, shuffle=True,
         num_workers=args.workers, pin_memory=True)
 
-    print model
+    print(model)
 
     if args.evaluate:
         validate(val_loader, model, criterion)
@@ -196,19 +197,21 @@ def train(train_loader, model, criterion, optimizer, epoch):
         # measure data loading time
         data_time.update(time.time() - end)
 
-        target = target.cuda(async=True)
+        target = target.long()
+        target = target.to(device)
         input_var = torch.autograd.Variable(input)
         target_var = torch.autograd.Variable(target)
 
         # compute output
         output = model(input_var)
+        output = output.permute(0,2,1)
         loss = criterion(output, target_var)
 
         # measure accuracy and record loss
-        prec1, prec5 = accuracy(output.data, target, topk=(1, 5))
-        losses.update(loss.data[0], input.size(0))
-        top1.update(prec1[0], input.size(0))
-        top5.update(prec5[0], input.size(0))
+        #prec1, prec5 = accuracy(output.data, target, topk=(1, 5))
+        losses.update(loss.data, input.size(0))
+        #top1.update(prec1[0], input.size(0))
+        #top5.update(prec5[0], input.size(0))
 
         # compute gradient and do SGD step
         optimizer.zero_grad()
@@ -242,7 +245,7 @@ def validate(val_loader, model, criterion):
 
     end = time.time()
     for i, (input, target) in enumerate(val_loader):
-        target = target.cuda(async=True)
+        target = target.to(device)
         input_var = torch.autograd.Variable(input, volatile=True)
         target_var = torch.autograd.Variable(target, volatile=True)
 
@@ -251,10 +254,10 @@ def validate(val_loader, model, criterion):
         loss = criterion(output, target_var)
 
         # measure accuracy and record loss
-        prec1, prec5 = accuracy(output.data, target, topk=(1, 5))
-        losses.update(loss.data[0], input.size(0))
-        top1.update(prec1[0], input.size(0))
-        top5.update(prec5[0], input.size(0))
+        #prec1, prec5 = accuracy(output.data, target, topk=(1, 5))
+        losses.update(loss.data, input.size(0))
+        #top1.update(prec1[0], input.size(0))
+        #top5.update(prec5[0], input.size(0))
 
         # measure elapsed time
         batch_time.update(time.time() - end)
@@ -302,7 +305,7 @@ class AverageMeter(object):
 def adjust_learning_rate(optimizer, epoch):
     """Sets the learning rate to the initial LR decayed by 10 every 40 epochs"""
     lr = args.lr * (0.1 ** (epoch // 40))
-    print 'Learning rate:', lr
+    print('Learning rate:', lr)
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 

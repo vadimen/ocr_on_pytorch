@@ -36,40 +36,81 @@ class LRN(nn.Module):
 
 class AlexNet(nn.Module):
 
-    def __init__(self, num_classes=1000):
+    def __init__(self, num_classes=None, nr_digits=8):
         super(AlexNet, self).__init__()
+        self.num_classes = num_classes
+        self.nr_digits = nr_digits
         self.features = nn.Sequential(
-            nn.Conv2d(3, 96, kernel_size=11, stride=4, padding=0),
+            nn.Conv2d(3, 32, kernel_size=3),
             nn.ReLU(inplace=True),
-            LRN(local_size=5, alpha=0.0001, beta=0.75),
-            nn.MaxPool2d(kernel_size=3, stride=2),
-            nn.Conv2d(96, 256, kernel_size=5, padding=2, groups=2),
+            nn.MaxPool2d(kernel_size=2),
+            nn.Conv2d(32, 64, kernel_size=3),
             nn.ReLU(inplace=True),
-            LRN(local_size=5, alpha=0.0001, beta=0.75),
-            nn.MaxPool2d(kernel_size=3, stride=2),
-            nn.Conv2d(256, 384, kernel_size=3, padding=1),
+            nn.MaxPool2d(kernel_size=2),
+            nn.Conv2d(64, 3, kernel_size=3),
             nn.ReLU(inplace=True),
-            nn.Conv2d(384, 384, kernel_size=3, padding=1, groups=2),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(384, 256, kernel_size=3, padding=1, groups=2),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=3, stride=2),
+            nn.MaxPool2d(kernel_size=2),
+            nn.Flatten(),
         )
         self.classifier = nn.Sequential(
-            nn.Linear(256 * 6 * 6, 4096),
+            nn.Linear(120, 1024),
             nn.ReLU(inplace=True),
-            nn.Dropout(),
-            nn.Linear(4096, 4096),
-            nn.ReLU(inplace=True),
-            nn.Dropout(),
-            nn.Linear(4096, num_classes),
+            nn.Linear(1024, self.nr_digits * self.num_classes),
+            nn.Softmax(dim=0)
         )
 
     def forward(self, x):
+        #print(x.shape)
         x = self.features(x)
-        x = x.view(x.size(0), 256 * 6 * 6)
+        #print(x.shape)
         x = self.classifier(x)
+        #print(x.shape)
+        x = x.view((x.shape[0], self.nr_digits, self.num_classes))
+        #print(x.shape)
         return x
+
+# class AlexNet(nn.Module):
+#
+#     def __init__(self, num_classes=11, nr_digits=8):
+#         super(AlexNet, self).__init__()
+#         self.num_classes = num_classes
+#         self.nr_digits = nr_digits
+#         self.features = nn.Sequential(
+#             nn.Conv2d(3, 96, kernel_size=11, stride=4, padding=0),
+#             nn.ReLU(inplace=True),
+#             LRN(local_size=5, alpha=0.0001, beta=0.75),
+#             nn.MaxPool2d(kernel_size=3, stride=2),
+#             nn.Conv2d(96, 256, kernel_size=5, padding=2, groups=2),
+#             nn.ReLU(inplace=True),
+#             LRN(local_size=5, alpha=0.0001, beta=0.75),
+#             nn.MaxPool2d(kernel_size=3, stride=2),
+#             nn.Conv2d(256, 384, kernel_size=3, padding=1),
+#             nn.ReLU(inplace=True),
+#             nn.Conv2d(384, 384, kernel_size=3, padding=1, groups=2),
+#             nn.ReLU(inplace=True),
+#             nn.Conv2d(384, 256, kernel_size=3, padding=1, groups=2),
+#             nn.ReLU(inplace=True),
+#             nn.MaxPool2d(kernel_size=3, stride=2),
+#         )
+#         self.classifier = nn.Sequential(
+#             nn.Linear(1024, 4096),
+#             nn.ReLU(inplace=True),
+#             nn.Dropout(),
+#             nn.Linear(4096, 4096),
+#             nn.ReLU(inplace=True),
+#             nn.Dropout(),
+#             nn.Linear(4096, self.num_classes),
+#         )
+#
+#     def forward(self, x):
+#         x = self.features(x)
+#         print('----------------',x.shape)
+#         x = x.view(self.nr_digits, 1024)
+#         print('----------------', x.shape)
+#         x = self.classifier(x)
+#         print('----------------', x.shape)
+#         x = x.view((self.nr_digits * self.num_classes))
+#         return x
 
 
 def alexnet(pretrained=False, **kwargs):
