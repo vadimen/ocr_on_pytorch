@@ -15,7 +15,7 @@ class MyDataset(Dataset):
         self.num_classes = len(self.character_set)  # as the network output
 
         lines = open(os.path.join(img_dir, txt_path)).readlines()
-        self.images = np.zeros((len(lines), self.H, self.W, self.C), dtype=np.float16)
+        self.images = np.zeros((len(lines), self.H, self.W, self.C), dtype=np.float32)
         #self.labels = np.zeros((len(lines), self.len_label, self.num_classes), dtype=np.uint8)
         self.labels = np.zeros((len(lines), self.len_label), dtype=np.uint8)
 
