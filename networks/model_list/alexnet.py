@@ -34,6 +34,8 @@ class LRN(nn.Module):
         x = x.div(div)
         return x
 
+#the net is taken from https://github.com/JackonYang/captcha-tensorflow
+#this is not AlexNet anymore
 class AlexNet(nn.Module):
 
     def __init__(self, num_classes=None, nr_digits=8):
@@ -56,8 +58,17 @@ class AlexNet(nn.Module):
             nn.Linear(120, 1024),
             nn.ReLU(inplace=True),
             nn.Linear(1024, self.nr_digits * self.num_classes),
-            nn.Softmax(dim=0)
+            nn.Softmax(dim=1)
         )
+
+    def init_weights(self):
+        def init_sequential(m):
+            if type(m) in [nn.Conv2d, nn.Linear]:
+                torch.nn.init.xavier_uniform(m.weight)
+                m.bias.data.fill_(0.01)
+
+        self.features.apply(init_sequential)
+        self.classifier.apply(init_sequential)
 
     def forward(self, x):
         #print(x.shape)
@@ -66,7 +77,6 @@ class AlexNet(nn.Module):
         x = self.classifier(x)
         #print(x.shape)
         x = x.view((x.shape[0], self.nr_digits, self.num_classes))
-        #print(x.shape)
         return x
 
 # class AlexNet(nn.Module):

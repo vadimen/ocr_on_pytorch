@@ -126,15 +126,15 @@ def main():
     #         meanfile=args.data+'/imagenet_mean.binaryproto')
 
     train_dataset = datasets.MyDataset(
-        img_dir='/home/vadim/Downloads/reviewed_plates/train_data_lmdb/train/',
+        img_dir='../train_data/train/',
         transform=transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
         ]), character_set=character_set)
 
     validation_dataset = datasets.MyDataset(
-        img_dir='/home/vadim/Downloads/reviewed_plates/test_data_lmdb/test/',
-        transform = transforms.Compose([
+        img_dir='../test_data/test/',
+        transform=transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
         ]), character_set=character_set)
@@ -153,6 +153,7 @@ def main():
         batch_size=args.batch_size, shuffle=True,
         num_workers=args.workers, pin_memory=True)
 
+    #model.init_weights()
     print(model)
 
     if args.evaluate:
@@ -197,6 +198,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
         # measure data loading time
         data_time.update(time.time() - end)
 
+        #print(target.shape)
         target = target.long()
         target = target.to(device)
         input_var = torch.autograd.Variable(input)
@@ -245,12 +247,14 @@ def validate(val_loader, model, criterion):
 
     end = time.time()
     for i, (input, target) in enumerate(val_loader):
+        target = target.long()
         target = target.to(device)
         input_var = torch.autograd.Variable(input, volatile=True)
         target_var = torch.autograd.Variable(target, volatile=True)
 
         # compute output
         output = model(input_var)
+        output = output.permute(0, 2, 1)
         loss = criterion(output, target_var)
 
         # measure accuracy and record loss

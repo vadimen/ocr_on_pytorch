@@ -24,6 +24,7 @@ class MyDataset(Dataset):
             img = cv2.imread(os.path.join(img_dir, img))
             #img = img.permute(2, 0, 1)  #channels go first
             #img = img.transpose(2,0,1)
+            img = img / 255
             self.images[i, :, :, :] = img
             self.labels[i] = self.label_to_net_output_format(label)
 
@@ -60,7 +61,7 @@ class MyDataset(Dataset):
         #target = target.reshape((self.len_label * self.num_classes))
         return img, target
 
-# d = MyDataset(img_dir='/home/vadim/Downloads/reviewed_plates/train_data_lmdb/train/')
+#d = MyDataset(img_dir='/home/vadim/Downloads/reviewed_plates/train_data_lmdb/train/')
 # for i, (input, target) in enumerate(d):
 #     print('-------------')
 #     print(target.shape)
