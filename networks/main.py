@@ -27,7 +27,7 @@ parser.add_argument('--arch', '-a', metavar='ARCH', default='alexnet',
                     help='model architecture (default: alexnet)')
 parser.add_argument('--data', metavar='DATA_PATH', default='./data/',
                     help='path to imagenet data (default: ./data/)')
-parser.add_argument('-j', '--workers', default=8, type=int, metavar='N',
+parser.add_argument('-j', '--workers', default=0, type=int, metavar='N',
                     help='number of data loading workers (default: 8)')
 parser.add_argument('--epochs', default=160, type=int, metavar='N',
                     help='number of total epochs to run')
