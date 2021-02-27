@@ -15,16 +15,16 @@ class MyDataset(Dataset):
         self.num_classes = len(self.character_set)  # as the network output
 
         lines = open(os.path.join(img_dir, txt_path)).readlines()
-        self.images = np.zeros((len(lines), self.H, self.W, self.C), dtype=np.float32)
+        self.images = np.zeros((len(lines), self.C, self.H, self.W), dtype=np.float32)
         #self.labels = np.zeros((len(lines), self.len_label, self.num_classes), dtype=np.uint8)
         self.labels = np.zeros((len(lines), self.len_label), dtype=np.uint8)
 
         for i, line in enumerate(lines):
             img, label = line.strip().split()
             img = cv2.imread(os.path.join(img_dir, img))
-            #img = img.permute(2, 0, 1)  #channels go first
-            #img = img.transpose(2,0,1)
-            img = img / 255
+            #img = img.permute(2, 0, 1)  #channels go first for torch tensor
+            img = img.transpose(2,0,1) #channel go first for numpy
+            img = img / 255.0
             self.images[i, :, :, :] = img
             self.labels[i] = self.label_to_net_output_format(label)
 
@@ -55,10 +55,12 @@ class MyDataset(Dataset):
         img = self.images[index]
         target = self.labels[index]
 
-        if self.transform is not None:
-            img = self.transform(img)
+        # if self.transform is not None:
+        #     img = self.transform(img)
 
         #target = target.reshape((self.len_label * self.num_classes))
+        img = torch.from_numpy(img)
+        target = torch.from_numpy(target)
         return img, target
 
 #d = MyDataset(img_dir='/home/vadim/Downloads/reviewed_plates/train_data_lmdb/train/')

@@ -46,19 +46,22 @@ class AlexNet(nn.Module):
             nn.Conv2d(3, 32, kernel_size=3),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=2),
+            nn.BatchNorm2d(32),
             nn.Conv2d(32, 64, kernel_size=3),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=2),
+            nn.BatchNorm2d(64),
             nn.Conv2d(64, 3, kernel_size=3),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=2),
+            nn.BatchNorm2d(3),
             nn.Flatten(),
         )
         self.classifier = nn.Sequential(
             nn.Linear(120, 1024),
             nn.ReLU(inplace=True),
             nn.Linear(1024, self.nr_digits * self.num_classes),
-            nn.Softmax(dim=1)
+            #nn.Softmax(dim=1) #cross entropy expects raw inputs in pytorch
         )
 
     def init_weights(self):
