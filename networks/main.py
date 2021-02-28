@@ -29,11 +29,11 @@ parser.add_argument('--data', metavar='DATA_PATH', default='./data/',
                     help='path to imagenet data (default: ./data/)')
 parser.add_argument('-j', '--workers', default=0, type=int, metavar='N',
                     help='number of data loading workers (default: 8)')
-parser.add_argument('--epochs', default=160, type=int, metavar='N',
+parser.add_argument('--epochs', default=2000, type=int, metavar='N',
                     help='number of total epochs to run')
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
-parser.add_argument('-b', '--batch-size', default=5000, type=int,
+parser.add_argument('-b', '--batch-size', default=256, type=int,
                     metavar='N', help='mini-batch size (default: 256)')
 parser.add_argument('--lr', '--learning-rate', default=0.01, type=float,
                     metavar='LR', help='initial learning rate')
@@ -128,15 +128,15 @@ def main():
     train_dataset = datasets.MyDataset(
         img_dir='../train_data/train/',
         transform=transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+            #transforms.ToTensor(),
+            #transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
         ]), character_set=character_set)
 
     validation_dataset = datasets.MyDataset(
         img_dir='../test_data/test/',
         transform=transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+            #transforms.ToTensor(),
+            #transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
         ]), character_set=character_set)
 
     if args.distributed:
@@ -153,7 +153,7 @@ def main():
         batch_size=args.batch_size, shuffle=True,
         num_workers=args.workers, pin_memory=True)
 
-    #model.init_weights()
+    model.init_weights()
     print(model)
 
     if args.evaluate:
