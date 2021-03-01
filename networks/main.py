@@ -29,7 +29,7 @@ parser.add_argument('--data', metavar='DATA_PATH', default='./data/',
                     help='path to imagenet data (default: ./data/)')
 parser.add_argument('-j', '--workers', default=0, type=int, metavar='N',
                     help='number of data loading workers (default: 8)')
-parser.add_argument('--epochs', default=2000, type=int, metavar='N',
+parser.add_argument('--epochs', default=4000, type=int, metavar='N',
                     help='number of total epochs to run')
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
@@ -43,7 +43,7 @@ parser.add_argument('--weight-decay', '--wd', default=5e-4, type=float,
                     metavar='W', help='weight decay (default: 5e-4)')
 parser.add_argument('--print-freq', '-p', default=10, type=int,
                     metavar='N', help='print frequency (default: 10)')
-parser.add_argument('--resume', default='', type=str, metavar='PATH',
+parser.add_argument('--resume', default='../checkpoint_v1_1.pth.tar', type=str, metavar='PATH',
                     help='path to latest checkpoint (default: none)')
 parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
                     help='evaluate model on validation set')
@@ -77,7 +77,7 @@ def main():
     character_set = "0123456789# "  # space is for nothing
     # create model
     if args.arch == 'alexnet':
-        model = model_list.alexnet(pretrained=args.pretrained, num_classes=len(character_set))
+        model = model_list.alexnet(pretrained=False, num_classes=len(character_set))
     else:
         raise Exception('Model not supported yet')
 
@@ -103,7 +103,10 @@ def main():
     if args.resume:
         if os.path.isfile(args.resume):
             print("=> loading checkpoint '{}'".format(args.resume))
-            checkpoint = torch.load(args.resume)
+            if torch.cuda.is_available():
+                checkpoint = torch.load(args.resume)
+            else:
+                checkpoint = torch.load(args.resume, map_location=torch.device('cpu'))
             args.start_epoch = checkpoint['epoch']
             best_prec1 = checkpoint['best_prec1']
             model.load_state_dict(checkpoint['state_dict'])
@@ -112,18 +115,20 @@ def main():
                   .format(args.resume, checkpoint['epoch']))
         else:
             print("=> no checkpoint found at '{}'".format(args.resume))
+    else:
+        if args.pretrained:
+            model_path = '../checkpoint_v1_1.pth.tar'
+            if torch.cuda.is_available():
+                pretrained_model = torch.load(model_path)
+            else:
+                pretrained_model = torch.load(model_path, map_location=torch.device('cpu'))
+            model.load_state_dict(pretrained_model['state_dict'])
+            print("Loaded pretrained model.")
+        else:
+            model.init_weights()
+            print("Initialized model weights.")
 
     cudnn.benchmark = True
-
-    # Data loading code
-    # if not os.path.exists(args.data+'/imagenet_mean.binaryproto'):
-    #     print("==> Data directory"+args.data+"does not exits")
-    #     print("==> Please specify the correct data path by")
-    #     print("==>     --data <DATA_PATH>")
-    #     return
-
-    # normalize = transforms.Normalize(
-    #         meanfile=args.data+'/imagenet_mean.binaryproto')
 
     train_dataset = datasets.MyDataset(
         img_dir='../train_data/train/',
@@ -153,7 +158,6 @@ def main():
         batch_size=args.batch_size, shuffle=True,
         num_workers=args.workers, pin_memory=True)
 
-    model.init_weights()
     print(model)
 
     if args.evaluate:
@@ -187,8 +191,6 @@ def train(train_loader, model, criterion, optimizer, epoch):
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter()
-    top1 = AverageMeter()
-    top5 = AverageMeter()
 
     # switch to train mode
     model.train()
@@ -209,11 +211,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
         output = output.permute(0,2,1)
         loss = criterion(output, target_var)
 
-        # measure accuracy and record loss
-        #prec1, prec5 = accuracy(output.data, target, topk=(1, 5))
         losses.update(loss.data, input.size(0))
-        #top1.update(prec1[0], input.size(0))
-        #top5.update(prec5[0], input.size(0))
 
         # compute gradient and do SGD step
         optimizer.zero_grad()
@@ -228,19 +226,15 @@ def train(train_loader, model, criterion, optimizer, epoch):
             print('Epoch: [{0}][{1}/{2}]\t'
                   'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                   'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'
-                  'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
-                  'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
-                  'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
+                  'Loss {loss.val:.4f} ({loss.avg:.4f})\t'.format(
                    epoch, i, len(train_loader), batch_time=batch_time,
-                   data_time=data_time, loss=losses, top1=top1, top5=top5))
+                   data_time=data_time, loss=losses))
         gc.collect()
 
 
 def validate(val_loader, model, criterion):
     batch_time = AverageMeter()
     losses = AverageMeter()
-    top1 = AverageMeter()
-    top5 = AverageMeter()
 
     # switch to evaluate mode
     model.eval()
@@ -257,29 +251,19 @@ def validate(val_loader, model, criterion):
         output = output.permute(0, 2, 1)
         loss = criterion(output, target_var)
 
-        # measure accuracy and record loss
-        #prec1, prec5 = accuracy(output.data, target, topk=(1, 5))
         losses.update(loss.data, input.size(0))
-        #top1.update(prec1[0], input.size(0))
-        #top5.update(prec5[0], input.size(0))
 
         # measure elapsed time
         batch_time.update(time.time() - end)
         end = time.time()
 
-        if i % args.print_freq == 0:
+        if i % 2 == 0:
             print('Test: [{0}/{1}]\t'
                   'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-                  'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
-                  'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
-                  'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
-                   i, len(val_loader), batch_time=batch_time, loss=losses,
-                   top1=top1, top5=top5))
+                  'Loss {loss.val:.4f} ({loss.avg:.4f})\t'.format(
+                   i, len(val_loader), batch_time=batch_time, loss=losses))
 
-    print(' * Prec@1 {top1.avg:.3f} Prec@5 {top5.avg:.3f}'
-          .format(top1=top1, top5=top5))
-
-    return top1.avg
+    return losses.avg
 
 
 def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
