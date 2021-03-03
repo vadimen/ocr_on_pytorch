@@ -23,8 +23,8 @@ import datasets as datasets
 from torchvision import transforms
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
-parser.add_argument('--arch', '-a', metavar='ARCH', default='alexnet',
-                    help='model architecture (default: alexnet)')
+parser.add_argument('--arch', '-a', metavar='ARCH', default='ocrnet',
+                    help='model architecture (default: ocrnet)')
 parser.add_argument('--data', metavar='DATA_PATH', default='./data/',
                     help='path to imagenet data (default: ./data/)')
 parser.add_argument('-j', '--workers', default=0, type=int, metavar='N',
@@ -76,13 +76,13 @@ def main():
 
     character_set = "0123456789# "  # space is for nothing
     # create model
-    if args.arch == 'alexnet':
-        model = model_list.alexnet(pretrained=False, num_classes=len(character_set))
+    if args.arch == 'ocrnet':
+        model = model_list.ocrnet(pretrained=False, num_classes=len(character_set))
     else:
         raise Exception('Model not supported yet')
 
     if not args.distributed:
-        if args.arch.startswith('alexnet') or args.arch.startswith('vgg'):
+        if args.arch.startswith('ocrnet') or args.arch.startswith('vgg'):
             model.features = torch.nn.DataParallel(model.features)
             model.to(device)
         else:

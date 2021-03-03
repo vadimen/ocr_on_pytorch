@@ -4,7 +4,6 @@ from torch.utils.data import Dataset
 import cv2
 import torch
 
-
 class MyDataset(Dataset):
     def __init__(self, txt_path='annotations.txt', img_dir='data', transform=None, character_set=None):
         self.transform = transform
@@ -16,7 +15,7 @@ class MyDataset(Dataset):
 
         lines = open(os.path.join(img_dir, txt_path)).readlines()
         self.images = np.zeros((len(lines), self.C, self.H, self.W), dtype=np.float32)
-        #self.labels = np.zeros((len(lines), self.len_label, self.num_classes), dtype=np.uint8)
+        #self.labels = np.zeros((len(lines), self.len_label, self.num_classes), dtype=np.float32)
         self.labels = np.zeros((len(lines), self.len_label), dtype=np.uint8)
 
         for i, line in enumerate(lines):

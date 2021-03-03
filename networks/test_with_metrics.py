@@ -18,10 +18,10 @@ import numpy as np
 
 character_set = "0123456789# "  # space is for nothing
 # create model
-model = model_list.alexnet(num_classes=len(character_set))
+model = model_list.ocrnet(num_classes=len(character_set))
 model.features = torch.nn.DataParallel(model.features)
 
-checkpoint = torch.load('checkpoint_v1_1.pth.tar', map_location=torch.device('cpu'))
+checkpoint = torch.load('../checkpoint_v1_1.pth.tar', map_location=torch.device('cpu'))
 model.load_state_dict(checkpoint['state_dict'])
 
 validation_dataset = datasets.MyDataset(
