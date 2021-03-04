@@ -161,7 +161,9 @@ class OCRNET(nn.Module):
         self.transformers = nn.Sequential(*self.transformers)
 
         # num_classes because we add it to transformers output
-        self.pos_emb = nn.Embedding(self.nr_digits, self.num_classes)
+        self.pos_emb = nn.Sequential(
+            nn.Embedding(self.nr_digits, self.num_classes)
+        )
 
     def init_weights(self):
         def init_sequential(m):
