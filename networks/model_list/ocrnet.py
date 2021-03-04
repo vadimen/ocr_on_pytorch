@@ -126,8 +126,9 @@ class TransformerBlock(nn.Module):
 #the cnn net is taken from https://github.com/JackonYang/captcha-tensorflow
 class OCRNET(nn.Module):
 
-    def __init__(self, num_classes=None, nr_digits=8, transformer_depth=4):
+    def __init__(self, device=torch.device("cpu"), num_classes=None, nr_digits=8, transformer_depth=4):
         super(OCRNET, self).__init__()
+        self.device = device
         self.num_classes = num_classes
         self.nr_digits = nr_digits
         self.features = nn.Sequential(
@@ -161,9 +162,7 @@ class OCRNET(nn.Module):
         self.transformers = nn.Sequential(*self.transformers)
 
         # num_classes because we add it to transformers output
-        self.pos_emb = nn.Sequential(
-            nn.Embedding(self.nr_digits, self.num_classes)
-        )
+        self.pos_emb = nn.Embedding(self.nr_digits, self.num_classes)
 
     def init_weights(self):
         def init_sequential(m):
@@ -180,20 +179,14 @@ class OCRNET(nn.Module):
         x = x.view((x.shape[0], self.nr_digits, self.num_classes))
 
         #generate positions for embeddings
-        positions = torch.arange(self.nr_digits)
+        positions = torch.arange(self.nr_digits).to(self.device)
         positions = self.pos_emb(positions)[None, :, :].expand(x.shape[0], self.nr_digits, self.num_classes)
         x = x + positions
         #apply transformers
         x = self.transformers(x)
         return x
 
-def ocrnet(pretrained=False, **kwargs):
+def ocrnet(**kwargs):
     model = OCRNET(**kwargs)
-    if pretrained:
-        model_path = '../checkpoint_v1_1.pth.tar'
-        if torch.cuda.is_available():
-            pretrained_model = torch.load(model_path)
-        else:
-            pretrained_model = torch.load(model_path, map_location=torch.device('cpu'))
-        model.load_state_dict(pretrained_model['state_dict'])
+
     return model

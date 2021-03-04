@@ -77,7 +77,7 @@ def main():
     character_set = "0123456789# "  # space is for nothing
     # create model
     if args.arch == 'ocrnet':
-        model = model_list.ocrnet(pretrained=False, num_classes=len(character_set))
+        model = model_list.ocrnet(device=device, num_classes=len(character_set))
     else:
         raise Exception('Model not supported yet')
 
