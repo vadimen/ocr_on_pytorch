@@ -67,8 +67,8 @@ def validate(val_loader, model):
         output = softmax(output.detach().numpy(), axis=2)
         output = np.argmax(output, axis=2)
 
-        print(output[0])
-        print(target.numpy()[0])
+        print(arr_to_label(output[0]))
+        print(arr_to_label(target.numpy()[0]))
 
         prc = round(SQ(None, arr_to_label(target.numpy()[0]), arr_to_label(output[0])).ratio() * 100, 2)
         all_percent_coincidence = all_percent_coincidence + prc
