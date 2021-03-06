@@ -84,11 +84,9 @@ def main():
     if not args.distributed:
         if args.arch.startswith('ocrnet') or args.arch.startswith('vgg'):
             model.features = torch.nn.DataParallel(model.features)
-            model.to(device)
         else:
             model = torch.nn.DataParallel(model).to(device)
     else:
-        model.to(device)
         model = torch.nn.parallel.DistributedDataParallel(model)
 
     # define loss function (criterion) and optimizer
@@ -106,7 +104,7 @@ def main():
             if torch.cuda.is_available():
                 checkpoint = torch.load(args.resume)
             else:
-                checkpoint = torch.load(args.resume, map_location=torch.device('cpu'))
+                checkpoint = torch.load(args.resume, map_location=device)
             args.start_epoch = checkpoint['epoch']
             best_prec1 = checkpoint['best_prec1']
             model.load_state_dict(checkpoint['state_dict'])
@@ -127,6 +125,8 @@ def main():
         else:
             model.init_weights()
             print("Initialized model weights.")
+    # won't harm anyway but if checkpoint loaded its needed
+    model.to(device)
 
     cudnn.benchmark = True
 

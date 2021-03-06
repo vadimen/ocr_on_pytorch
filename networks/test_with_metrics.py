@@ -16,13 +16,20 @@ import datasets as datasets
 from torchvision import transforms
 import numpy as np
 
+torch.manual_seed(1)
+device = torch.device("cpu")
+if torch.cuda.is_available():
+    torch.cuda.manual_seed(1)
+    device = torch.device("cuda")
+
 character_set = "0123456789# "  # space is for nothing
 # create model
-model = model_list.ocrnet(num_classes=len(character_set))
+model = model_list.ocrnet(device=device, num_classes=len(character_set))
 model.features = torch.nn.DataParallel(model.features)
 
 checkpoint = torch.load('../checkpoint_v1_1.pth.tar', map_location=torch.device('cpu'))
 model.load_state_dict(checkpoint['state_dict'])
+model.to(device)
 
 validation_dataset = datasets.MyDataset(
     img_dir='../test_data/test/',
@@ -64,7 +71,7 @@ def validate(val_loader, model):
         start = time.time()
 
         output = model(input_var)
-        output = softmax(output.detach().numpy(), axis=2)
+        output = softmax(output.detach().cpu().numpy(), axis=2)
         output = np.argmax(output, axis=2)
 
         print(arr_to_label(output[0]))

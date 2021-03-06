@@ -90,7 +90,7 @@ class SelfAttention(nn.Module):
         return self.unifyheads(out)
 
 class TransformerBlock(nn.Module):
-    def __init__(self, emb, heads, mask=None, ff_hidden_mult=4, dropout=0.0):
+    def __init__(self, emb, heads, mask=None, ff_hidden_mult=4, dropout=0.1):
         super().__init__()
 
         self.attention = SelfAttention(emb, heads=heads, mask=mask)
@@ -125,8 +125,7 @@ class TransformerBlock(nn.Module):
 
 #the cnn net is taken from https://github.com/JackonYang/captcha-tensorflow
 class OCRNET(nn.Module):
-
-    def __init__(self, device=torch.device("cpu"), num_classes=None, nr_digits=8, transformer_depth=4):
+    def __init__(self, device=torch.device("cpu"), num_classes=None, nr_digits=8, transformer_depth=8):
         super(OCRNET, self).__init__()
         self.device = device
         self.num_classes = num_classes
@@ -157,7 +156,7 @@ class OCRNET(nn.Module):
 
         for i in range(transformer_depth):
             # num_classes because we reshape it in forward
-            self.transformers.append(TransformerBlock(self.num_classes, 4))
+            self.transformers.append(TransformerBlock(self.num_classes, 8))
 
         self.transformers = nn.Sequential(*self.transformers)
 
@@ -188,5 +187,7 @@ class OCRNET(nn.Module):
 
 def ocrnet(**kwargs):
     model = OCRNET(**kwargs)
+    #when loading checkpoint to(device) should be made after that
+    model.to(kwargs['device'])
 
     return model
