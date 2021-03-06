@@ -125,7 +125,7 @@ class TransformerBlock(nn.Module):
 
 #the cnn net is taken from https://github.com/JackonYang/captcha-tensorflow
 class OCRNET(nn.Module):
-    def __init__(self, device=torch.device("cpu"), num_classes=None, nr_digits=8, transformer_depth=8):
+    def __init__(self, device=torch.device("cpu"), num_classes=None, nr_digits=8, transformer_depth=4):
         super(OCRNET, self).__init__()
         self.device = device
         self.num_classes = num_classes
@@ -145,10 +145,18 @@ class OCRNET(nn.Module):
             nn.BatchNorm2d(3),
             nn.Flatten(),
         )
-        self.classifier = nn.Sequential(
+
+        #from here it will go to transformer
+        self.pre_transformer = nn.Sequential(
             nn.Linear(120, 1024),
             nn.ReLU(inplace=True),
-            nn.Linear(1024, self.nr_digits * self.num_classes),
+        )
+
+        #will be after I apply view()
+        self.pre_transformer_output = 1024//self.nr_digits   #128
+
+        self.classifier = nn.Sequential(
+            nn.Linear(self.pre_transformer_output, self.num_classes),
             #nn.Softmax(dim=1) #cross entropy expects raw inputs in pytorch
         )
 
@@ -156,12 +164,12 @@ class OCRNET(nn.Module):
 
         for i in range(transformer_depth):
             # num_classes because we reshape it in forward
-            self.transformers.append(TransformerBlock(self.num_classes, 8))
+            self.transformers.append(TransformerBlock(self.pre_transformer_output, 4))
 
         self.transformers = nn.Sequential(*self.transformers)
 
         # num_classes because we add it to transformers output
-        self.pos_emb = nn.Embedding(self.nr_digits, self.num_classes)
+        self.pos_emb = nn.Embedding(self.nr_digits, self.pre_transformer_output)
 
     def init_weights(self):
         def init_sequential(m):
@@ -174,15 +182,17 @@ class OCRNET(nn.Module):
 
     def forward(self, x):
         x = self.features(x)
-        x = self.classifier(x)
-        x = x.view((x.shape[0], self.nr_digits, self.num_classes))
+        x = self.pre_transformer(x)
+        x = x.view((x.shape[0], self.nr_digits, self.pre_transformer_output))
 
         #generate positions for embeddings
         positions = torch.arange(self.nr_digits).to(self.device)
-        positions = self.pos_emb(positions)[None, :, :].expand(x.shape[0], self.nr_digits, self.num_classes)
+        positions = self.pos_emb(positions)[None, :, :].expand(x.shape[0], self.nr_digits, self.pre_transformer_output)
         x = x + positions
         #apply transformers
         x = self.transformers(x)
+
+        x = self.classifier(x)
         return x
 
 def ocrnet(**kwargs):
