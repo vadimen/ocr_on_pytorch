@@ -73,7 +73,7 @@ class SelfAttention(nn.Module):
 
         dot = F.softmax(dot, dim=2) # dot now has row-wise self-attention probabilities
 
-        assert not contains_nan(dot[:, 1:, :]) # only the forst row may contain nan
+        assert not contains_nan(dot[:, 1:, :]) # only the first row may contain nan
 
         if self.mask == 'first':
             dot = dot.clone()
@@ -90,7 +90,7 @@ class SelfAttention(nn.Module):
         return self.unifyheads(out)
 
 class TransformerBlock(nn.Module):
-    def __init__(self, emb, heads, mask=None, ff_hidden_mult=4, dropout=0.1):
+    def __init__(self, emb, heads, mask=None, ff_hidden_mult=4, dropout=0):
         super().__init__()
 
         self.attention = SelfAttention(emb, heads=heads, mask=mask)
@@ -130,6 +130,7 @@ class OCRNET(nn.Module):
         self.device = device
         self.num_classes = num_classes
         self.nr_digits = nr_digits
+        self.features_out = 240
         self.features = nn.Sequential(
             nn.Conv2d(3, 32, kernel_size=3),
             nn.ReLU(inplace=True),
@@ -143,33 +144,30 @@ class OCRNET(nn.Module):
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=2),
             nn.BatchNorm2d(3),
-            nn.Flatten(),
+            nn.Flatten(),#gives 120
+            nn.Linear(120, self.features_out),
+            nn.ReLU(inplace=True)
         )
 
-        #from here it will go to transformer
-        self.pre_transformer = nn.Sequential(
-            nn.Linear(120, 1024),
-            nn.ReLU(inplace=True),
-        )
-
-        #will be after I apply view()
-        self.pre_transformer_output = 1024//self.nr_digits   #128
+        #120 comes out of self.features
+        self.nr_timesteps = self.nr_digits*2
+        self.embedded_len = self.features_out//self.nr_timesteps  #15
 
         self.classifier = nn.Sequential(
-            nn.Linear(self.pre_transformer_output, self.num_classes),
-            #nn.Softmax(dim=1) #cross entropy expects raw inputs in pytorch
+            nn.Linear(self.embedded_len, self.num_classes)
+            #nn.LogSoftmax(dim=2)
         )
 
         self.transformers = []
 
         for i in range(transformer_depth):
             # num_classes because we reshape it in forward
-            self.transformers.append(TransformerBlock(self.pre_transformer_output, 4))
+            self.transformers.append(TransformerBlock(self.embedded_len, 4))
 
         self.transformers = nn.Sequential(*self.transformers)
 
         # num_classes because we add it to transformers output
-        self.pos_emb = nn.Embedding(self.nr_digits, self.pre_transformer_output)
+        self.pos_emb = nn.Embedding(self.nr_timesteps, self.embedded_len)
 
     def init_weights(self):
         def init_sequential(m):
@@ -182,12 +180,11 @@ class OCRNET(nn.Module):
 
     def forward(self, x):
         x = self.features(x)
-        x = self.pre_transformer(x)
-        x = x.view((x.shape[0], self.nr_digits, self.pre_transformer_output))
+        x = x.view((x.shape[0], self.nr_timesteps, self.embedded_len))
 
         #generate positions for embeddings
-        positions = torch.arange(self.nr_digits).to(self.device)
-        positions = self.pos_emb(positions)[None, :, :].expand(x.shape[0], self.nr_digits, self.pre_transformer_output)
+        positions = torch.arange(self.nr_timesteps).to(self.device)
+        positions = self.pos_emb(positions)[None, :, :].expand(x.shape[0], self.nr_timesteps, self.embedded_len)
         x = x + positions
         #apply transformers
         x = self.transformers(x)

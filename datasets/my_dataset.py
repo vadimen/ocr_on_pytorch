@@ -15,17 +15,18 @@ class MyDataset(Dataset):
 
         lines = open(os.path.join(img_dir, txt_path)).readlines()
         self.images = np.zeros((len(lines), self.C, self.H, self.W), dtype=np.float32)
-        #self.labels = np.zeros((len(lines), self.len_label, self.num_classes), dtype=np.float32)
         self.labels = np.zeros((len(lines), self.len_label), dtype=np.uint8)
+        self.label_lenghts = np.zeros((len(lines), ), dtype=np.uint8)
 
         for i, line in enumerate(lines):
             img, label = line.strip().split()
             img = cv2.imread(os.path.join(img_dir, img))
             #img = img.permute(2, 0, 1)  #channels go first for torch tensor
-            img = img.transpose(2,0,1) #channel go first for numpy
+            img = img.transpose(2,0,1) #channel go first for torch in numpy
             img = img / 255.0
             self.images[i, :, :, :] = img
             self.labels[i] = self.label_to_net_output_format(label)
+            self.label_lenghts[i] = len(label)
 
     def label_to_net_output_format(self, label):
         # label_coded = np.zeros((self.len_label, self.num_classes), dtype=np.uint8)
@@ -42,7 +43,7 @@ class MyDataset(Dataset):
             label_coded.extend([pos])
 
         if len(label_coded) < self.len_label:
-            pos_space = self.character_set.find(' ')
+            pos_space = 100 #pad no matter with what
             label_coded.extend([pos_space] * (self.len_label - len(label_coded)))
 
         return label_coded
@@ -53,6 +54,7 @@ class MyDataset(Dataset):
     def __getitem__(self, index):
         img = self.images[index]
         target = self.labels[index]
+        target_len = self.label_lenghts[index]
 
         # if self.transform is not None:
         #     img = self.transform(img)
@@ -60,7 +62,8 @@ class MyDataset(Dataset):
         #target = target.reshape((self.len_label * self.num_classes))
         img = torch.from_numpy(img)
         target = torch.from_numpy(target)
-        return img, target
+        #nr_timesteps = 16 = self.nr_digits*2, nr of timesteps from ocrnet
+        return img, target, 16, target_len
 
 #d = MyDataset(img_dir='/home/vadim/Downloads/reviewed_plates/train_data_lmdb/train/')
 # for i, (input, target) in enumerate(d):

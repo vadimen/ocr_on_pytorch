@@ -74,7 +74,7 @@ def main():
         dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
                                 world_size=args.world_size)
 
-    character_set = "0123456789# "  # space is for nothing
+    character_set = "-0123456789#"  # - is the blank symbol for ctc loss
     # create model
     if args.arch == 'ocrnet':
         model = model_list.ocrnet(device=device, num_classes=len(character_set))
@@ -90,12 +90,15 @@ def main():
         model = torch.nn.parallel.DistributedDataParallel(model)
 
     # define loss function (criterion) and optimizer
-    criterion = nn.CrossEntropyLoss().to(device)
+    #criterion = nn.CrossEntropyLoss().to(device)
+    criterion = nn.CTCLoss(blank=character_set.index('-'), reduction='mean',zero_infinity=False)
 
-    optimizer = torch.optim.Adam(model.parameters(), args.lr,
-                                #momentum=args.momentum,
-                                weight_decay=args.weight_decay)
+    # optimizer = torch.optim.Adam(model.parameters(), args.lr,
+    #                             #momentum=args.momentum,
+    #                             weight_decay=args.weight_decay)
 
+    optimizer = torch.optim.RMSprop(model.parameters(), lr=0.001, alpha=0.9, eps=1e-08,
+                              momentum=0.9, weight_decay=2e-5)
 
     # optionally resume from a checkpoint
     if args.resume:
@@ -196,20 +199,26 @@ def train(train_loader, model, criterion, optimizer, epoch):
     model.train()
 
     end = time.time()
-    for i, (input, target) in enumerate(train_loader):
+    for i, (input, target, emb_len, target_len) in enumerate(train_loader):
         # measure data loading time
         data_time.update(time.time() - end)
 
         #print(target.shape)
-        target = target.long()
+        #target = target.long()
         target = target.to(device)
+        target_len = target_len.to(device)
+        emb_len = emb_len.to(device)
         input_var = torch.autograd.Variable(input)
         target_var = torch.autograd.Variable(target)
+        target_len = torch.autograd.Variable(target_len)
+        emb_len = torch.autograd.Variable(emb_len)
 
         # compute output
         output = model(input_var)
-        output = output.permute(0,2,1)
-        loss = criterion(output, target_var)
+        #output = output.permute(0,2,1)
+        output = output.permute(1, 0, 2) #for ctc loss
+        output = torch.nn.functional.log_softmax(output, 2)
+        loss = criterion(output, target_var, emb_len, target_len)
 
         losses.update(loss.data, input.size(0))
 
@@ -240,16 +249,20 @@ def validate(val_loader, model, criterion):
     model.eval()
 
     end = time.time()
-    for i, (input, target) in enumerate(val_loader):
-        target = target.long()
+    for i, (input, target, emb_len, target_len) in enumerate(val_loader):
         target = target.to(device)
-        input_var = torch.autograd.Variable(input, volatile=True)
-        target_var = torch.autograd.Variable(target, volatile=True)
+        target_len = target_len.to(device)
+        emb_len = emb_len.to(device)
+        input_var = torch.autograd.Variable(input)
+        target_var = torch.autograd.Variable(target)
+        target_len = torch.autograd.Variable(target_len)
+        emb_len = torch.autograd.Variable(emb_len)
 
         # compute output
         output = model(input_var)
-        output = output.permute(0, 2, 1)
-        loss = criterion(output, target_var)
+        output = output.permute(1, 0, 2)
+        output = torch.nn.functional.log_softmax(output, 2)
+        loss = criterion(output, target_var, emb_len, target_len)
 
         losses.update(loss.data, input.size(0))
 
