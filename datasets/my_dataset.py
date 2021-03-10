@@ -7,7 +7,8 @@ import torch
 class MyDataset(Dataset):
     def __init__(self, txt_path='annotations.txt', img_dir='data', transform=None, character_set=None):
         self.transform = transform
-        self.H, self.W, self.C = 50, 100, 3
+        #self.H, self.W, self.C = 50, 100, 3
+        self.H, self.W, self.C = 24, 94, 3
         self.len_label = 8 #max labels of every plate
 
         self.character_set = character_set
