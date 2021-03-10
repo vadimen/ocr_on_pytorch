@@ -207,6 +207,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
 
         #print(target.shape)
         #target = target.long()
+        input = input.to(device)
         target = target.to(device)
         target_len = target_len.to(device)
         emb_len = emb_len.to(device)
@@ -252,6 +253,7 @@ def validate(val_loader, model, criterion):
 
     end = time.time()
     for i, (input, target, emb_len, target_len) in enumerate(val_loader):
+        input = input.to(device)
         target = target.to(device)
         target_len = target_len.to(device)
         emb_len = emb_len.to(device)
