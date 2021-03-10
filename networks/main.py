@@ -83,7 +83,8 @@ def main():
 
     if not args.distributed:
         if args.arch.startswith('ocrnet') or args.arch.startswith('vgg'):
-            model.features = torch.nn.DataParallel(model.features)
+            #model.backbone = torch.nn.DataParallel(model.backbone)
+            pass
         else:
             model = torch.nn.DataParallel(model).to(device)
     else:
@@ -127,23 +128,24 @@ def main():
             print("Loaded pretrained model.")
         else:
             model.init_weights()
-            print("Initialized model weights.")
     # won't harm anyway but if checkpoint loaded its needed
     model.to(device)
 
     cudnn.benchmark = True
 
     train_dataset = datasets.MyDataset(
-        img_dir='../train_data/train/',
+        img_dir='../train_data_24x94/',
         transform=transforms.Compose([
             #transforms.ToTensor(),
+            #transforms.Resize([92,24])
             #transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
         ]), character_set=character_set)
 
     validation_dataset = datasets.MyDataset(
-        img_dir='../test_data/test/',
+        img_dir='../test_data_24x94/',
         transform=transforms.Compose([
             #transforms.ToTensor(),
+            #transforms.Resize([92,24])
             #transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
         ]), character_set=character_set)
 
@@ -303,13 +305,26 @@ class AverageMeter(object):
         self.avg = self.sum / self.count
 
 
-def adjust_learning_rate(optimizer, epoch):
-    """Sets the learning rate to the initial LR decayed by 10 every 40 epochs"""
-    lr = args.lr * (0.1 ** (epoch // 40))
-    print('Learning rate:', lr)
+# def adjust_learning_rate(optimizer, epoch):
+#     """Sets the learning rate to the initial LR decayed by 10 every 40 epochs"""
+#     lr = args.lr * (0.1 ** (epoch // 40))
+#     print('Learning rate:', lr)
+#     for param_group in optimizer.param_groups:
+#         param_group['lr'] = lr
+
+def adjust_learning_rate(optimizer, cur_epoch, base_lr=0.1, lr_schedule=[4, 8, 12, 14, 16]):
+    """
+    Sets the learning rate
+    """
+    lr = 0
+    for i, e in enumerate(lr_schedule):
+        if cur_epoch < e:
+            lr = base_lr * (0.1 ** i)
+            break
+    if lr == 0:
+        lr = base_lr
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
-
 
 def accuracy(output, target, topk=(1,)):
     """Computes the precision@k for the specified values of k"""
