@@ -25,14 +25,14 @@ if torch.cuda.is_available():
 character_set = "-0123456789#"  # space is for nothing
 # create model
 model = model_list.ocrnet(device=device, num_classes=len(character_set))
-model.features = torch.nn.DataParallel(model.features)
+#model.features = torch.nn.DataParallel(model.features)
 
 checkpoint = torch.load('checkpoint.pth.tar', map_location=torch.device('cpu'))
 model.load_state_dict(checkpoint['state_dict'])
 model.to(device)
 
 validation_dataset = datasets.MyDataset(
-    img_dir='../test_data/test/',
+    img_dir='../test_data_24x94/',
     transform=transforms.Compose([
         #transforms.ToTensor(),
         #transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
@@ -67,6 +67,7 @@ def validate(val_loader, model):
     all_percent_coincidence = 0
 
     for i, (input, target, emb_len, target_len) in enumerate(val_loader):
+        input = input.to(device)
         input_var = torch.autograd.Variable(input, volatile=True)
 
         # compute output
