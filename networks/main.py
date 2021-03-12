@@ -29,11 +29,11 @@ parser.add_argument('--data', metavar='DATA_PATH', default='./data/',
                     help='path to imagenet data (default: ./data/)')
 parser.add_argument('-j', '--workers', default=0, type=int, metavar='N',
                     help='number of data loading workers (default: 8)')
-parser.add_argument('--epochs', default=2000, type=int, metavar='N',
+parser.add_argument('--epochs', default=1000, type=int, metavar='N',
                     help='number of total epochs to run')
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
-parser.add_argument('-b', '--batch-size', default=256, type=int,
+parser.add_argument('-b', '--batch-size', default=128, type=int,
                     metavar='N', help='mini-batch size (default: 256)')
 parser.add_argument('--lr', '--learning-rate', default=0.01, type=float,
                     metavar='LR', help='initial learning rate')
@@ -48,7 +48,7 @@ parser.add_argument('--resume', default='', type=str, metavar='PATH', #../checkp
 parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
                     help='evaluate model on validation set')
 parser.add_argument('--pretrained', dest='pretrained', action='store_true',
-                    default=False, help='use pre-trained model')
+                    default=True, help='use pre-trained model')
 parser.add_argument('--world-size', default=1, type=int,
                     help='number of distributed processes')
 parser.add_argument('--dist-url', default='tcp://224.66.41.62:23456', type=str,
@@ -74,7 +74,19 @@ def main():
         dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
                                 world_size=args.world_size)
 
-    character_set = "-0123456789#"  # - is the blank symbol for ctc loss
+    #character_set = "-0123456789#"  # - is the blank symbol for ctc loss
+    character_set = ['-', '京', '沪', '津', '渝', '冀', '晋', '蒙', '辽', '吉', '黑',
+         '苏', '浙', '皖', '闽', '赣', '鲁', '豫', '鄂', '湘', '粤',
+         '桂', '琼', '川', '贵', '云', '藏', '陕', '甘', '青', '宁',
+         '新',
+         '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+         'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K',
+         'L', 'M', 'N', 'P', 'Q', 'R', 'S', 'T', 'U', 'V',
+         'W', 'X', 'Y', 'Z', 'I', 'O'
+         ]
+
+    character_set = "".join(character_set)
+
     # create model
     if args.arch == 'ocrnet':
         model = model_list.ocrnet(device=device, num_classes=len(character_set))
@@ -119,12 +131,12 @@ def main():
             print("=> no checkpoint found at '{}'".format(args.resume))
     else:
         if args.pretrained:
-            model_path = '../checkpoint_v1_1.pth.tar'
+            model_path = 'sirius_ai_checkpoint.pth'
             if torch.cuda.is_available():
                 pretrained_model = torch.load(model_path)
             else:
                 pretrained_model = torch.load(model_path, map_location=torch.device('cpu'))
-            model.load_state_dict(pretrained_model['state_dict'])
+            model.load_state_dict(pretrained_model)
             print("Loaded pretrained model.")
         else:
             model.init_weights()
