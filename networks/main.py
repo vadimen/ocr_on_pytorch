@@ -48,7 +48,7 @@ parser.add_argument('--resume', default='', type=str, metavar='PATH', #../checkp
 parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
                     help='evaluate model on validation set')
 parser.add_argument('--pretrained', dest='pretrained', action='store_true',
-                    default=True, help='use pre-trained model')
+                    default=False, help='use pre-trained model')
 parser.add_argument('--world-size', default=1, type=int,
                     help='number of distributed processes')
 parser.add_argument('--dist-url', default='tcp://224.66.41.62:23456', type=str,
@@ -74,18 +74,18 @@ def main():
         dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
                                 world_size=args.world_size)
 
-    #character_set = "-0123456789#"  # - is the blank symbol for ctc loss
-    character_set = ['-', '京', '沪', '津', '渝', '冀', '晋', '蒙', '辽', '吉', '黑',
-         '苏', '浙', '皖', '闽', '赣', '鲁', '豫', '鄂', '湘', '粤',
-         '桂', '琼', '川', '贵', '云', '藏', '陕', '甘', '青', '宁',
-         '新',
-         '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-         'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K',
-         'L', 'M', 'N', 'P', 'Q', 'R', 'S', 'T', 'U', 'V',
-         'W', 'X', 'Y', 'Z', 'I', 'O'
-         ]
-
-    character_set = "".join(character_set)
+    character_set = "-0123456789#"  # - is the blank symbol for ctc loss
+    # character_set = ['-', '京', '沪', '津', '渝', '冀', '晋', '蒙', '辽', '吉', '黑',
+    #      '苏', '浙', '皖', '闽', '赣', '鲁', '豫', '鄂', '湘', '粤',
+    #      '桂', '琼', '川', '贵', '云', '藏', '陕', '甘', '青', '宁',
+    #      '新',
+    #      '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+    #      'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K',
+    #      'L', 'M', 'N', 'P', 'Q', 'R', 'S', 'T', 'U', 'V',
+    #      'W', 'X', 'Y', 'Z', 'I', '#'
+    #      ]
+    #
+    # character_set = "".join(character_set)
 
     # create model
     if args.arch == 'ocrnet':
@@ -138,15 +138,15 @@ def main():
                 pretrained_model = torch.load(model_path, map_location=torch.device('cpu'))
             model.load_state_dict(pretrained_model)
             print("Loaded pretrained model.")
-        else:
-            model.init_weights()
+        # else:
+        #     model.init_weights()
     # won't harm anyway but if checkpoint loaded its needed
     model.to(device)
 
     cudnn.benchmark = True
 
     train_dataset = datasets.MyDataset(
-        img_dir='../train_data_24x94/',
+        img_dir='../train_images_48x144/',
         transform=transforms.Compose([
             #transforms.ToTensor(),
             #transforms.Resize([92,24])
@@ -154,7 +154,7 @@ def main():
         ]), character_set=character_set)
 
     validation_dataset = datasets.MyDataset(
-        img_dir='../test_data_24x94/',
+        img_dir='../test_images_48x144/',
         transform=transforms.Compose([
             #transforms.ToTensor(),
             #transforms.Resize([92,24])
@@ -231,7 +231,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
         # compute output
         output = model(input_var)
         #output = output.permute(0,2,1)
-        output = output.permute(1, 0, 2) #for ctc loss
+        #output = output.permute(1, 0, 2) #for ctc loss
         output = torch.nn.functional.log_softmax(output, 2)
         loss = criterion(output, target_var, emb_len, target_len)
 
@@ -276,7 +276,7 @@ def validate(val_loader, model, criterion):
 
         # compute output
         output = model(input_var)
-        output = output.permute(1, 0, 2)
+        #output = output.permute(1, 0, 2)
         output = torch.nn.functional.log_softmax(output, 2)
         loss = criterion(output, target_var, emb_len, target_len)
 

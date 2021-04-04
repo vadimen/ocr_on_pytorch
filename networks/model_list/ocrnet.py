@@ -6,226 +6,267 @@ import math
 
 __all__ = ['OCRNET', 'ocrnet']
 
-#transformer functions taken from here https://github.com/pbloem/former/
-# def mask_(matrices, maskval=0.0, mask_diagonal=True):
-#     """
-#     Masks out all values in the given batch of matrices where i <= j holds,
-#     i < j if mask_diagonal is false
-#     In place operation
-#     :param tns:
-#     :return:
-#     """
-#
-#     b, h, w = matrices.size()
-#
-#     indices = torch.triu_indices(h, w, offset=0 if mask_diagonal else 1)
-#     matrices[:, indices[0], indices[1]] = maskval
-#
-# def contains_nan(tensor):
-#     return bool((tensor != tensor).sum() > 0)
-#
-# class SelfAttention(nn.Module):
-#     def __init__(self, emb, heads=8, mask=False):
-#         """
-#
-#         :param emb:
-#         :param heads:
-#         :param mask:
-#         """
-#
-#         super().__init__()
-#
-#         self.emb = emb
-#         self.heads = heads
-#         self.mask = mask
-#
-#         self.tokeys = nn.Linear(emb, emb * heads, bias=False)
-#         self.toqueries = nn.Linear(emb, emb * heads, bias=False)
-#         self.tovalues = nn.Linear(emb, emb * heads, bias=False)
-#
-#         self.unifyheads = nn.Linear(heads * emb, emb)
-#
-#     def forward(self, x):
-#
-#         b, t, e = x.size()
-#         h = self.heads
-#         assert e == self.emb, f'Input embedding dim ({e}) should match layer embedding dim ({self.emb})'
-#
-#         keys    = self.tokeys(x)   .view(b, t, h, e)
-#         queries = self.toqueries(x).view(b, t, h, e)
-#         values  = self.tovalues(x) .view(b, t, h, e)
-#
-#         # compute scaled dot-product self-attention
-#
-#         # - fold heads into the batch dimension
-#         keys = keys.transpose(1, 2).contiguous().view(b * h, t, e)
-#         queries = queries.transpose(1, 2).contiguous().view(b * h, t, e)
-#         values = values.transpose(1, 2).contiguous().view(b * h, t, e)
-#
-#         # - get dot product of queries and keys, and scale
-#         dot = torch.bmm(queries, keys.transpose(1, 2))
-#         dot = dot / math.sqrt(e) # dot contains b*h  t-by-t matrices with raw self-attention logits
-#
-#         assert dot.size() == (b*h, t, t), f'Matrix has size {dot.size()}, expected {(b*h, t, t)}.'
-#
-#         if self.mask: # mask out the lower half of the dot matrix,including the diagonal
-#             mask_(dot, maskval=float('-inf'), mask_diagonal=False)
-#
-#         dot = F.softmax(dot, dim=2) # dot now has row-wise self-attention probabilities
-#
-#         assert not contains_nan(dot[:, 1:, :]) # only the first row may contain nan
-#
-#         if self.mask == 'first':
-#             dot = dot.clone()
-#             dot[:, :1, :] = 0.0
-#             # - The first row of the first attention matrix is entirely masked out, so the softmax operation results
-#             #   in a division by zero. We set this row to zero by hand to get rid of the NaNs
-#
-#         # apply the self attention to the values
-#         out = torch.bmm(dot, values).view(b, h, t, e)
-#
-#         # swap h, t back, unify heads
-#         out = out.transpose(1, 2).contiguous().view(b, t, h * e)
-#
-#         return self.unifyheads(out)
-#
-# class TransformerBlock(nn.Module):
-#     def __init__(self, emb, heads, mask=None, ff_hidden_mult=4, dropout=0):
-#         super().__init__()
-#
-#         self.attention = SelfAttention(emb, heads=heads, mask=mask)
-#         self.mask = mask
-#
-#         self.norm1 = nn.LayerNorm(emb)
-#         self.norm2 = nn.LayerNorm(emb)
-#
-#         self.ff = nn.Sequential(
-#             nn.Linear(emb, ff_hidden_mult * emb),
-#             nn.ReLU(),
-#             nn.Linear(ff_hidden_mult * emb, emb)
-#         )
-#
-#         self.do = nn.Dropout(dropout)
-#
-#     def forward(self, x):
-#
-#         attended = self.attention(x)
-#
-#         x = self.norm1(attended + x)
-#
-#         x = self.do(x)
-#
-#         fedforward = self.ff(x)
-#
-#         x = self.norm2(fedforward + x)
-#
-#         x = self.do(x)
-#
-#         return x
+# common 3x3 conv with BN and ReLU
+def conv_bn(inp, oup, stride, if_bias=False):
+    return nn.Sequential(
+        nn.Conv2d(inp, oup, 3, stride, 1, bias=if_bias),
+        nn.BatchNorm2d(oup),
+        nn.ReLU(inplace=True)
+    )
 
-class small_basic_block(nn.Module):
-    def __init__(self, ch_in, ch_out):
-        super(small_basic_block, self).__init__()
-        self.block = nn.Sequential(
-            nn.Conv2d(ch_in, ch_out // 4, kernel_size=1),
-            nn.ReLU(),
-            nn.Conv2d(ch_out // 4, ch_out // 4, kernel_size=(3, 1), padding=(1, 0)),
-            nn.ReLU(),
-            nn.Conv2d(ch_out // 4, ch_out // 4, kernel_size=(1, 3), padding=(0, 1)),
-            nn.ReLU(),
-            nn.Conv2d(ch_out // 4, ch_out, kernel_size=1),
-        )
+
+# common 1x1 conv with BN and ReLU
+def conv_1x1_bn(inp, oup, if_bias=False):
+    return nn.Sequential(
+        nn.Conv2d(inp, oup, 1, 1, 0, bias=if_bias),
+        nn.BatchNorm2d(oup),
+        nn.ReLU(inplace=True)
+    )
+
+# ==========================[2] public function module ============================
+def channel_shuffle(x, groups):
+    # 如果 x 是一个 Variable，那么 x.data 则是一个 Tensor
+    # 解析维度信息
+    batchsize, num_channels, height, width = x.data.size()
+    # 整除
+    channels_per_group = num_channels // groups
+    # reshape，view函数旨在reshape张量形状
+    x = x.view(batchsize, groups,
+               channels_per_group, height, width)
+    # transpose操作2D矩阵的转置，即只能转换两个维度
+    # contiguous一般与transpose，permute,view搭配使用，使之变连续
+    # 即使用transpose或permute进行维度变换后，调用contiguous，然后方可使用view对维度进行变形
+    # 1，2维度互换
+    # Size(batchsize, channels_per_group, groups, height, width)
+    x = torch.transpose(x, 1, 2).contiguous()
+    # flatten
+    x = x.view(batchsize, -1, height, width)
+    return x
+
+# original ShuffleNetV2 Block, together with stride=2 and stride=1 modules
+class InvertedResidual(nn.Module):
+    def __init__(self, inp, oup, stride, benchmodel):
+        super(InvertedResidual, self).__init__()
+        assert benchmodel in (1, 2)
+        self.benchmodel = benchmodel
+        self.stride = stride
+        assert stride in [1, 2]
+
+        oup_inc = oup // 2
+
+        if self.benchmodel == 1:  # 对应block  c，有通道拆分
+            # assert inp == oup_inc
+            self.banch2 = nn.Sequential(
+                # pw
+                nn.Conv2d(oup_inc, oup_inc, 1, 1, 0, bias=False),
+                nn.BatchNorm2d(oup_inc),
+                nn.ReLU(inplace=True),
+                # dw
+                nn.Conv2d(oup_inc, oup_inc, 3, stride, 1, groups=oup_inc, bias=False),
+                nn.BatchNorm2d(oup_inc),
+                # pw-linear
+                nn.Conv2d(oup_inc, oup_inc, 1, 1, 0, bias=False),
+                nn.BatchNorm2d(oup_inc),
+                nn.ReLU(inplace=True),
+            )
+        elif self.benchmodel == 2:  # 对应block  d，无通道拆分
+            self.banch1 = nn.Sequential(
+                # dw
+                nn.Conv2d(inp, inp, 3, stride, 1, groups=inp, bias=False),
+                nn.BatchNorm2d(inp),
+                # pw-linear
+                nn.Conv2d(inp, oup_inc, 1, 1, 0, bias=False),
+                nn.BatchNorm2d(oup_inc),
+                nn.ReLU(inplace=True),
+            )
+
+            self.banch2 = nn.Sequential(
+                # pw
+                nn.Conv2d(inp, oup_inc, 1, 1, 0, bias=False),
+                nn.BatchNorm2d(oup_inc),
+                nn.ReLU(inplace=True),
+                # dw
+                nn.Conv2d(oup_inc, oup_inc, 3, stride, 1, groups=oup_inc, bias=False),
+                nn.BatchNorm2d(oup_inc),
+                # pw-linear
+                nn.Conv2d(oup_inc, oup_inc, 1, 1, 0, bias=False),
+                nn.BatchNorm2d(oup_inc),
+                nn.ReLU(inplace=True),
+            )
+
+    # python staticmethod 返回函数的静态方法
+    @staticmethod
+    def _concat(x, out):
+        # concatenate along channel axis
+        # torch.cat((A,B),dim)，第二维度拼接，通道数维度
+        return torch.cat((x, out), 1)
 
     def forward(self, x):
-        return self.block(x)
+        if 1 == self.benchmodel:
+            x1 = x[:, :(x.shape[1] // 2), :, :]
+            x2 = x[:, (x.shape[1] // 2):, :, :]
+            out = self._concat(x1, self.banch2(x2))
+        elif 2 == self.benchmodel:
+            out = self._concat(self.banch1(x), self.banch2(x))
+        return channel_shuffle(out, 2)  # 两路通道混合
 
-#the cnn net is taken from https://github.com/JackonYang/captcha-tensorflow
-class OCRNET(nn.Module):
-    def __init__(self, device=torch.device("cpu"), num_classes=None, nr_digits=8, transformer_depth=4, dropout=0):
-        super(OCRNET, self).__init__()
-        self.device = device
-
-        ###LPRnet
-        self.nr_digits = nr_digits
-        self.num_classes = num_classes
-        self.backbone = nn.Sequential(
-            nn.Conv2d(in_channels=3, out_channels=64, kernel_size=3, stride=1),  # 0
-            nn.BatchNorm2d(num_features=64),
-            nn.ReLU(),  # 2
-            nn.MaxPool3d(kernel_size=(1, 3, 3), stride=(1, 1, 1)),
-            small_basic_block(ch_in=64, ch_out=128),  # *** 4 ***
-            nn.BatchNorm2d(num_features=128),
-            nn.ReLU(),  # 6
-            nn.MaxPool3d(kernel_size=(1, 3, 3), stride=(2, 1, 2)),
-            small_basic_block(ch_in=64, ch_out=256),  # 8
-            nn.BatchNorm2d(num_features=256),
-            nn.ReLU(),  # 10
-            small_basic_block(ch_in=256, ch_out=256),  # *** 11 ***
-            nn.BatchNorm2d(num_features=256),  # 12
-            nn.ReLU(),
-            nn.MaxPool3d(kernel_size=(1, 3, 3), stride=(4, 1, 2)),  # 14
-            nn.Dropout(dropout),
-            nn.Conv2d(in_channels=64, out_channels=256, kernel_size=(1, 4), stride=1),  # 16
-            nn.BatchNorm2d(num_features=256),
-            nn.ReLU(),  # 18
-            nn.Dropout(dropout),
-            nn.Conv2d(in_channels=256, out_channels=self.num_classes, kernel_size=(13, 1), stride=1),  # 20
-            nn.BatchNorm2d(num_features=self.num_classes),
-            nn.ReLU(),  # *** 22 ***
-        )
-        self.container = nn.Sequential(
-            nn.Conv2d(in_channels=448 + self.num_classes, out_channels=self.num_classes, kernel_size=(1, 1), stride=(1, 1))
-        )
-        ###LPRnet
-
-    def init_weights(self):
-        def xavier(param):
-            nn.init.xavier_uniform(param)
-
-        def init_sequential(m):
-            for key in m.state_dict():
-                if key.split('.')[-1] == 'weight':
-                    if 'conv' in key:
-                        nn.init.kaiming_normal_(m.state_dict()[key], mode='fan_out')
-                    if 'bn' in key:
-                        m.state_dict()[key][...] = xavier(1)
-                elif key.split('.')[-1] == 'bias':
-                    m.state_dict()[key][...] = 0.01
-
-        self.backbone.apply(init_sequential)
-        self.container.apply(init_sequential)
-        print("initialized net weights successful!")
+# for recognition
+# This module also can change the channels!
+class ParallelDownBlock(nn.Module):
+    def __init__(self, chn_in, chn_out, mode='max', stride=(2, 2)):
+        super(ParallelDownBlock, self).__init__()
+        assert mode in ('max', 'mean')
+        assert stride in ((2, 2), (1, 2), (1, 4))
+        if stride == (2, 2):
+            chn_mid = chn_in // 2
+            self.branch1 = nn.Sequential(
+                conv_1x1_bn(inp=chn_in, oup=chn_mid, if_bias=False),
+                conv_bn(inp=chn_mid, oup=chn_in, stride=2, if_bias=False),
+            )
+            if mode == 'max':
+                self.branch2 = nn.MaxPool2d(kernel_size=2, stride=2, padding=0)
+            else:
+                self.branch2 = nn.AvgPool2d(kernel_size=2, stride=2, padding=0)
+            self.last_conv = conv_1x1_bn(inp=chn_in * 2, oup=chn_out, if_bias=False)
+        elif stride == (1, 2):
+            chn_mid = chn_in // 4
+            self.branch1 = nn.Sequential(
+                conv_1x1_bn(inp=chn_in, oup=chn_mid, if_bias=False),
+                nn.Conv2d(chn_mid, chn_in, kernel_size=(1, 5), stride=(1, 2), padding=(0, 2), bias=False),
+                nn.BatchNorm2d(chn_in),
+                nn.ReLU(inplace=True)
+            )
+            if mode == 'max':
+                self.branch2 = nn.MaxPool2d(kernel_size=(3, 3), stride=(1, 2), padding=(1, 1))
+            else:
+                self.branch2 = nn.AvgPool2d(kernel_size=(3, 3), stride=(1, 2), padding=(1, 1))
+            self.last_conv = conv_1x1_bn(inp=chn_in * 2, oup=chn_out, if_bias=False)
+        elif stride == (1, 4):
+            chn_mid = chn_in // 4
+            self.branch1 = nn.Sequential(
+                conv_1x1_bn(inp=chn_in, oup=chn_mid, if_bias=False),
+                nn.Conv2d(chn_mid, chn_in, kernel_size=(1, 7), stride=(1, 4), padding=(0, 3), bias=False),
+                nn.BatchNorm2d(chn_in),
+                nn.ReLU(inplace=True)
+            )
+            if mode == 'max':
+                self.branch2 = nn.MaxPool2d(kernel_size=(3, 5), stride=(1, 4), padding=(1, 2))
+            else:
+                self.branch2 = nn.AvgPool2d(kernel_size=(3, 5), stride=(1, 4), padding=(1, 2))
+            self.last_conv = conv_1x1_bn(inp=chn_in * 2, oup=chn_out, if_bias=False)
 
     def forward(self, x):
-        ###LPRnet
-        keep_features = list()
-        for i, layer in enumerate(self.backbone.children()):
-            x = layer(x)
-            if i in [2, 6, 13, 22]:  # [2, 4, 8, 11, 22]
-                keep_features.append(x)
-
-        global_context = list()
-        for i, f in enumerate(keep_features):
-            if i in [0, 1]:
-                f = nn.AvgPool2d(kernel_size=5, stride=5)(f)
-            if i in [2]:
-                f = nn.AvgPool2d(kernel_size=(4, 10), stride=(4, 2))(f)
-            f_pow = torch.pow(f, 2)
-            f_mean = torch.mean(f_pow)
-            f = torch.div(f, f_mean)
-            global_context.append(f)
-
-        x = torch.cat(global_context, 1)
-        x = self.container(x)
-        x = torch.mean(x, dim=2)
-        ###LPRnet
-
-        x = x.permute(0, 2, 1)
-
+        x1 = self.branch1(x)
+        x2 = self.branch2(x)
+        x = torch.cat([x1, x2], dim=1)
+        x = self.last_conv(x)
         return x
 
+# for recognition
+class GlobalAvgContextEnhanceBlock(nn.Module):
+    def __init__(self, chn_in, size_hw_in, chn_shrink_ratio=6):
+        """
+        :param chn_in:
+        :param size_hw_in: (h, w) or [h, w]
+        :param chn_shrink_ratio:
+        """
+        super(GlobalAvgContextEnhanceBlock, self).__init__()
+        self.H, self.W = size_hw_in
+        chn_out = chn_in // chn_shrink_ratio
+        self.layers = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Conv2d(chn_in, chn_out, kernel_size=1, stride=1, padding=0, bias=False),
+            nn.LayerNorm([chn_out, 1, 1]),
+            # nn.ReLU(inplace=True)
+        )
+        self.BN = nn.BatchNorm2d(chn_out)
+
+    def forward(self, x):
+        x_avg = self.layers(x)  # size(B, chn_out)
+        x_avg = x_avg.repeat((1, 1, self.H, self.W))  # size(B, chn_out, H, W)
+        x_avg = self.BN(x_avg)
+        return torch.cat([x, x_avg], dim=1)
+
+class SSNetRegOriginal(nn.Module):  # SSNetRegOriginal
+    def __init__(self, class_num):
+        super(SSNetRegOriginal, self).__init__()
+        self.stage0 = nn.Sequential(
+            nn.Conv2d(3, 24, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.MaxPool2d(kernel_size=3, stride=1, padding=1),
+            InvertedResidual(24, 24, 1, 1)
+        )
+        # stage 1
+        self.down_layer1 = ParallelDownBlock(chn_in=24, chn_out=40, mode='max', stride=(2, 2))  # (72, 24)
+        self.stage1 = nn.Sequential(
+            InvertedResidual(40, 40, 1, 1),
+            InvertedResidual(40, 40, 1, 1)
+        )
+        self.avg_context1 = ParallelDownBlock(chn_in=40, chn_out=40, mode='mean', stride=(1, 4))
+
+        # stage 2
+        self.down_layer2 = ParallelDownBlock(chn_in=40, chn_out=64, mode='max', stride=(1, 2))  # (36, 24)
+        self.stage2 = nn.Sequential(
+            InvertedResidual(64, 64, 1, 1),
+            InvertedResidual(64, 64, 1, 1),
+        )
+
+        # fc enhance, out channel == 72, (64 + 64 // 8)
+        self.enhance2 = GlobalAvgContextEnhanceBlock(chn_in=64, size_hw_in=(24, 36), chn_shrink_ratio=8)
+        self.avg_context2 = ParallelDownBlock(chn_in=72, chn_out=72, mode='mean', stride=(1, 2))
+
+        # stage 3
+        self.down_layer3 = ParallelDownBlock(chn_in=72, chn_out=80, mode='max', stride=(1, 2))  # (18, 24)
+        self.stage3 = nn.Sequential(
+            InvertedResidual(80, 80, 1, 1),
+            InvertedResidual(80, 80, 1, 1),
+            InvertedResidual(80, 80, 1, 1),
+        )
+
+        # chn_in = 80 + 72 + 40, chn_out = 192 + 192 // 8 = 216
+        self.enhance_last = GlobalAvgContextEnhanceBlock(chn_in=192, size_hw_in=(24, 18), chn_shrink_ratio=8)
+
+        fc_out_chn = 216
+        post_in_chn = fc_out_chn
+        post_out_chn = post_in_chn // 2
+        self.postprocessor = nn.Sequential(
+            nn.Conv2d(in_channels=post_in_chn, out_channels=post_out_chn, kernel_size=(1, 5), stride=(1, 1), padding=(0, 2)),
+            nn.BatchNorm2d(post_out_chn),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(in_channels=post_out_chn, out_channels=post_out_chn, kernel_size=(13, 1), stride=(1, 1), padding=(6, 0)),
+            nn.BatchNorm2d(post_out_chn),
+            nn.ReLU(inplace=True),
+            nn.AvgPool2d(kernel_size=(4, 3), stride=(4, 1), padding=(0, 1))
+        )
+        self.container = nn.Sequential(
+            nn.Conv2d(in_channels=post_out_chn, out_channels=class_num, kernel_size=1, stride=1)
+        )
+
+    def forward(self, x):
+        x0 = self.stage0(x)  # up to 0.015
+
+        x1 = self.down_layer1(x0)
+        x1 = x1 + self.stage1(x1)  # up to 0.037
+
+        x2 = self.down_layer2(x1)
+        x2 = x2 + self.stage2(x2)
+        x2 = self.enhance2(x2)
+
+        x3_1 = self.down_layer3(x2)
+        x3_2 = self.stage3[0](x3_1)
+        x3_3 = self.stage3[1](x3_2)
+        x3_4 = self.stage3[2](x3_1 + x3_3)
+        x3 = x3_2 + x3_4
+
+        x_concat = torch.cat([self.avg_context1(x1), self.avg_context2(x2), x3], dim=1)
+        # print(x_cat.shape)
+        x = self.enhance_last(x_concat)  # up to 0.066, out size(1, 216, 24, 24)
+        x = self.container(self.postprocessor(x))  # size(1, class_num, 6, 12)
+        logits = torch.mean(x, dim=2)  # size(1, class_num, 12)""""""
+        logits = logits.permute(2, 0, 1)
+        return logits
+
 def ocrnet(**kwargs):
-    model = OCRNET(**kwargs)
+    model = SSNetRegOriginal(kwargs['num_classes'])
     #when loading checkpoint to(device) should be made after that
     model.to(kwargs['device'])
 
