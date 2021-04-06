@@ -151,7 +151,10 @@ def main():
             #transforms.ToTensor(),
             #transforms.Resize([92,24])
             #transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-        ]), character_set=character_set)
+        ]),
+        character_set=character_set,
+        embsz=model.get_net_embedded_size_for_ctc()
+    )
 
     validation_dataset = datasets.MyDataset(
         img_dir='../test_images_48x144/',
@@ -159,7 +162,10 @@ def main():
             #transforms.ToTensor(),
             #transforms.Resize([92,24])
             #transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-        ]), character_set=character_set)
+        ]),
+        character_set=character_set,
+        embsz=model.get_net_embedded_size_for_ctc()
+    )
 
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)

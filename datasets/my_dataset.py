@@ -5,8 +5,9 @@ import cv2
 import torch
 
 class MyDataset(Dataset):
-    def __init__(self, txt_path='annotations.txt', img_dir='data', transform=None, character_set=None):
+    def __init__(self, txt_path='annotations.txt', img_dir='data', transform=None, character_set=None, embsz=None):
         self.transform = transform
+        self.emb_sz = embsz
         #self.H, self.W, self.C = 50, 100, 3
         #self.H, self.W, self.C = 24, 94, 3
         self.H, self.W, self.C = 48, 144, 3
@@ -65,7 +66,7 @@ class MyDataset(Dataset):
         img = torch.from_numpy(img)
         target = torch.from_numpy(target)
         #nr_timesteps = 16 = self.nr_digits*2, nr of timesteps from ocrnet
-        return img, target, 16, target_len
+        return img, target, self.emb_sz, target_len
 
 #d = MyDataset(img_dir='/home/vadim/Downloads/reviewed_plates/train_data_lmdb/train/')
 # for i, (input, target) in enumerate(d):

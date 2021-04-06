@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import math
 
 
-__all__ = ['OCRNET', 'ocrnet']
+__all__ = ['ocrnet']
 
 # common 3x3 conv with BN and ReLU
 def conv_bn(inp, oup, stride, if_bias=False):
@@ -241,6 +241,10 @@ class SSNetRegOriginal(nn.Module):  # SSNetRegOriginal
             nn.Conv2d(in_channels=post_out_chn, out_channels=class_num, kernel_size=1, stride=1)
         )
 
+    def get_net_embedded_size_for_ctc(self):
+        #T=input length
+        return 18
+
     def forward(self, x):
         x0 = self.stage0(x)  # up to 0.015
 
@@ -261,7 +265,7 @@ class SSNetRegOriginal(nn.Module):  # SSNetRegOriginal
         # print(x_cat.shape)
         x = self.enhance_last(x_concat)  # up to 0.066, out size(1, 216, 24, 24)
         x = self.container(self.postprocessor(x))  # size(1, class_num, 6, 12)
-        logits = torch.mean(x, dim=2)  # size(1, class_num, 12)""""""
+        logits = torch.mean(x, dim=2)  # size(1, class_num, 18)""""""
         logits = logits.permute(2, 0, 1)
         return logits
 
