@@ -36,7 +36,10 @@ validation_dataset = datasets.MyDataset(
     transform=transforms.Compose([
         #transforms.ToTensor(),
         #transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-    ]), character_set=character_set)
+    ]),
+    character_set=character_set,
+    embsz=model.get_net_embedded_size_for_ctc()
+)
 
 batch_size = 1
 val_loader = torch.utils.data.DataLoader(
@@ -75,6 +78,8 @@ def validate(val_loader, model):
 
         output = model(input_var)
         #output = softmax(output.detach().cpu().numpy(), axis=2)
+        #for v1.6
+        output = output.permute(1, 0, 2)
         output = torch.nn.functional.log_softmax(output, 2)
         output = np.argmax(output.detach().cpu().numpy(), axis=2)
 
